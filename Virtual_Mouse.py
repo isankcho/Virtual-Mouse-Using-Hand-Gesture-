@@ -1,75 +1,74 @@
 import cv2
 import numpy as np
-import HandTrackingModule as htm
+import hand_track as htm
 import time
-import autopy
+import pyautogui
 
+##########################
 wCam, hCam = 640, 480
-frameR = 100     #Frame Reduction
-smoothening = 7  #random value
-
-
+frameR = 100
+smoothening = 7
 pTime = 0
 plocX, plocY = 0, 0
 clocX, clocY = 0, 0
+##########################
+
 cap = cv2.VideoCapture(0)
 cap.set(3, wCam)
 cap.set(4, hCam)
-
 detector = htm.handDetector(maxHands=1)
-wScr, hScr = autopy.screen.size()
+pyautogui.FAILSAFE = False
+wScr, hScr = pyautogui.size()
 
-# print(wScr, hScr)
+sensitivity = 15 
 
 while True:
-    #Find the landmarks
+    # Find hand landmarks
     success, img = cap.read()
     img = detector.findHands(img)
     lmList, bbox = detector.findPosition(img)
 
-    #Get the tip of the index and middle finger
+    # Get fingers up status
     if len(lmList) != 0:
-        x1, y1 = lmList[8][1:]
-        x2, y2 = lmList[12][1:]
-
-        #Check which fingers are up
         fingers = detector.fingersUp()
-        cv2.rectangle(img, (frameR, frameR), (wCam - frameR, hCam - frameR),
-                      (255, 0, 255), 2)
 
-        #Only Index Finger: Moving Mode
-        if fingers[1] == 1 and fingers[2] == 0:
+        # Click mouse
+        if fingers[0]:  # Check if the index finger is up (left-click)
+            pyautogui.click()
+            time.sleep(0.1) 
 
-            #Convert the coordinates
-            x3 = np.interp(x1, (frameR, wCam-frameR), (0, wScr))
-            y3 = np.interp(y1, (frameR, hCam-frameR), (0, hScr))
-
-            #Smooth Values
-            clocX = plocX + (x3 - plocX) / smoothening
-            clocY = plocY + (y3 - plocY) / smoothening
-
-            #Move Mouse
-            autopy.mouse.move(wScr - clocX, clocY)
-            cv2.circle(img, (x1, y1), 15, (255, 0, 255), cv2.FILLED)
+        # Move mouse
+        # We will use the index finger's tip (lmList[8]) to control the mouse movement
+        if fingers[1]:  # Check if the middle finger is up (move the mouse)
+            x, y = lmList[8][1], lmList[8][2]  # Get the coordinates of the index finger's tip
+            x = np.interp(x, [frameR, wCam - frameR], [0, wScr])  # Map the x-coordinate to the screen width
+            y = np.interp(y, [frameR, hCam - frameR], [0, hScr])  # Map the y-coordinate to the screen height
+            clocX = plocX + (x - plocX) / smoothening
+            clocY = plocY + (y - plocY) / smoothening
+            pyautogui.moveTo(clocX, clocY)
             plocX, plocY = clocX, clocY
 
-        #Both Index and middle are up: Clicking Mode
-        if fingers[1] == 1 and fingers[2] == 1:
 
-            #Find distance between fingers
-            length, img, lineInfo = detector.findDistance(8, 12, img)
+        # Scroll up and down
+        if fingers[2]:  # Check if the ring finger is up (scroll)
+            pyautogui.scroll(10)
+            time.sleep(0.1)   # You can adjust the scroll amount as needed
 
-            #Click mouse if distance short
-            if length < 40:
-                cv2.circle(img, (lineInfo[4], lineInfo[5]), 15, (0, 255, 0), cv2.FILLED)
-                autopy.mouse.click()
+        # Zoom in/out mode
+        if fingers[3] and fingers[4]:  # Check if both pinky and thumb fingers are up (zoom)
+            pyautogui.hotkey('ctrl', '+')  # Zoom in
+        elif fingers[3]:  # Check if only the pinky finger is up (zoom out)
+            pyautogui.hotkey('ctrl', '-')  # Zoom out
 
-    #Frame rate
+        # Take screenshots
+        if fingers[0] and fingers[2]:  # Check if both index and ring fingers are up (take a screenshot)
+            pyautogui.screenshot("screenshot.png")  # Save the screenshot to a file named "screenshot.png"
+
+    # Frame rate
     cTime = time.time()
-    fps = 1/(cTime-pTime)
+    fps = 1 / (cTime - pTime)
     pTime = cTime
-    cv2.putText(img, str(int(fps)), (28, 58), cv2.FONT_HERSHEY_PLAIN, 3, (255, 8, 8), 3)
 
-    #Display
+    # Display
     cv2.imshow("Image", img)
     cv2.waitKey(1)
